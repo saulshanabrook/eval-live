@@ -19,7 +19,7 @@
 function createEngine(graphScript, evalLivePy, setState) {
   let pyodide = null;
   let loadPromise = null;
-  const cache = { tableKey: null, narrowKey: null, graphKey: null };
+  const cache = { rawKey: null, narrowKey: null, displayKey: null, graphKey: null };
   let running = false;
   let rerunRequested = false;
   let debounceTimer = null;
@@ -101,22 +101,23 @@ function createEngine(graphScript, evalLivePy, setState) {
       registryFresh = true;
     }
 
-    // The three effects run in order A -> B -> C: B's input depends on A's
-    // output (computed-table rows), and C's input depends on B's output
-    // (narrowing). C (graphs) feeds back into nothing, so the chain is acyclic.
+    // Acyclic DAG, run in order. Each setState mutates the shared state in
+    // place, so a later stage sees an earlier stage's output via latestState.
 
-    // A: computed-table rows, from the UN-narrowed raw data (avoids a cycle:
-    //    a computed table's filter must not change its own input rows).
+    // A1: UNFILTERED computed tables, from raw-filtered data only. These are the
+    //     source for checkbox options and for the narrowing selection (B). They
+    //     never depend on the narrowing, which is what keeps the graph acyclic.
     const rawFd = rawFilteredData(latestState);
-    const tableKey = stableKey(rawFd);
-    if (tableKey !== cache.tableKey) {
-      cache.tableKey = tableKey;
+    const rawKey = stableKey(rawFd);
+    if (rawKey !== cache.rawKey) {
+      cache.rawKey = rawKey;
       await freshRegistry();
-      const computedTables = await runTables(rawFd);
-      setState((s) => { s.engine.computedTables = computedTables; });
+      const computedUnfiltered = await runTables(rawFd);
+      setState((s) => { s.engine.computedUnfiltered = computedUnfiltered; });
     }
 
-    // B: computed->raw narrowing, from the computed tables' filtered rows.
+    // B: computed->raw narrowing, from the user's selection applied to the
+    //    UNFILTERED tables (computedFilterInputs reads computedUnfiltered).
     const cf = computedFilterInputs(latestState);
     const narrowKey = stableKey(cf);
     if (narrowKey !== cache.narrowKey) {
@@ -130,9 +131,23 @@ function createEngine(graphScript, evalLivePy, setState) {
       }
     }
 
-    // C: graphs, from the EFFECTIVE (narrowed) data, so they reflect both raw
-    //    filters and computed-table filters.
+    // A2: DISPLAYED computed tables, from the effective (narrowed) data, so a
+    //     filter on one computed table narrows them all. With nothing narrowed,
+    //     reuse the unfiltered tables -- no extra Pyodide call.
     const eff = effectiveRawData(latestState);
+    const displayKey = stableKey(eff);
+    if (displayKey !== cache.displayKey) {
+      cache.displayKey = displayKey;
+      if (!latestState.engine.narrowing) {
+        setState((s) => { s.engine.computedTables = s.engine.computedUnfiltered; });
+      } else {
+        await freshRegistry();
+        const displayed = await runTables(eff);
+        setState((s) => { s.engine.computedTables = displayed; });
+      }
+    }
+
+    // C: graphs, from the effective data (reflect both raw and computed filters).
     const graphKey = stableKey(eff);
     if (graphKey !== cache.graphKey) {
       cache.graphKey = graphKey;

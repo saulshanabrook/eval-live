@@ -78,9 +78,19 @@ event -> setState(reducer) -> render(state)  [+ engine.tick(state)]
 - **table-view.js** — `buildTableView` builds a table's DOM once, then
   `sync(state)` reconciles it (collapsed class, input values, checkbox state, row
   visibility). It stores no UI state, so collapse/filters survive re-renders.
-- **graph-engine.js** — `createEngine`: the expensive Pyodide work (graphs,
-  computed-table rows, computed→raw narrowing) as *memoized async effects* keyed
-  on their inputs, writing results back through `setState`.
+- **graph-engine.js** — `createEngine`: the expensive Pyodide work as *memoized
+  async effects* forming an acyclic DAG, writing results back through `setState`:
+
+  ```
+  rawFilteredData ─▶ computedUnfiltered ─▶ narrowing ─▶ effectiveRawData ─▶ { computed tables (displayed), graphs, raw display }
+                       (checkbox options +        (acyclic: narrowing's
+                        narrowing selection)       inputs never depend on it)
+  ```
+
+  A filter on any table — raw or computed — narrows everything: raw rows, graphs,
+  and all computed tables. The narrowing *selection* and the checkbox *options*
+  are taken from the unfiltered tables (`computedUnfiltered`), so options don't
+  vanish as the displayed rows shrink, and there is no recompute cycle.
 - **eval-live.js** — `initEvalLive`: owns the state, wires reducers, and
   `render(state)` reconciles the whole page (graph bar, raw + computed tables).
 

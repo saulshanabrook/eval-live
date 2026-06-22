@@ -44,8 +44,15 @@ function makeState(data, projectName, graphScript, evalLivePy) {
       status: graphScript ? "loading" : "none",
       statusText: "",
       graphs: [],            // [{name, src}]
-      computedTables: [],    // [{name, rows, hasFilterSource}]
-      narrowing: null,       // {tableName: rows[]} from computed->raw feedback, or null
+      // computedUnfiltered: tables run on rawFilteredData (raw filters only) --
+      //   the source for checkbox OPTIONS and for the narrowing SELECTION.
+      //   Computing the selection from these (not the displayed ones) is what
+      //   keeps the data-flow acyclic.
+      // computedTables: tables run on the effective (narrowed) data -- what the
+      //   views actually DISPLAY, so one computed filter narrows them all.
+      computedUnfiltered: [], // [{name, rows, hasFilterSource}]
+      computedTables: [],     // [{name, rows, hasFilterSource}]
+      narrowing: null,        // {tableName: rows[]} from computed->raw feedback, or null
     },
   };
 }
@@ -142,16 +149,35 @@ function effectiveRawData(state) {
   return out;
 }
 
-// {name, filtered_rows} for every computed table with a filter_source -- the
-// input to apply_table_filters (the computed->raw narrowing).
+// {name, filtered_rows} for every computed table that has a filter_source AND
+// an active filter -- the input to apply_table_filters (the computed->raw
+// narrowing). The selection is taken from the UNFILTERED tables so it does not
+// depend on the narrowing (no cycle). Tables with no active filter are omitted,
+// so with nothing filtered this returns [] and the narrowing stays null.
 function computedFilterInputs(state) {
   const out = [];
-  for (const t of state.engine.computedTables) {
+  for (const t of state.engine.computedUnfiltered) {
     if (!t.hasFilterSource) continue;
     const ui = state.ui.tables[t.name];
-    out.push({ name: t.name, filtered_rows: ui ? visibleRows(t.rows, ui) : t.rows });
+    if (!ui) continue;
+    const active = (ui.sql && ui.sql.trim()) || Object.keys(ui.colFilters).length > 0;
+    if (!active) continue;
+    out.push({ name: t.name, filtered_rows: visibleRows(t.rows, ui) });
   }
   return out;
+}
+
+// Sorted distinct values of a column, or null if any value is a non-scalar
+// (object/array) -- such columns get no checkbox dropdown. Pure so the dropdown
+// list can be derived (and tested) rather than computed ad hoc in the view.
+function distinctScalarValues(rows, col) {
+  const distinct = new Set();
+  for (const r of rows) {
+    const v = r[col];
+    if (v !== undefined && v !== null && typeof v === "object") return null;
+    distinct.add(v === undefined || v === null ? "" : String(v));
+  }
+  return [...distinct].sort();
 }
 
 // Stable key for memoizing async engine work (so Pyodide only re-runs when its
@@ -297,7 +323,7 @@ if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     makeState, makeTableUi, ensureTableUi, cellText, columnsOf,
     visibleRowIndices, visibleRows, rawFilteredData, effectiveRawData,
-    computedFilterInputs, stableKey, isNumericValue, bestNumericCols,
+    computedFilterInputs, distinctScalarValues, stableKey, isNumericValue, bestNumericCols,
     extractColumnValues, removeColumnClause, setColumnClause, columnClauseFor, tidyAnds,
     toggleCollapsed, setSql, setColFilter, setActiveGraph, setHighlight, clearAllFilters,
   };

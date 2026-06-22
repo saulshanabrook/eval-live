@@ -139,6 +139,33 @@ test("effectiveRawData narrows graph data by engine.narrowing", () => {
   eq(ctx.effectiveRawData(state).runs, [ROWS[0], ROWS[2]]);
 });
 
+test("computedFilterInputs: from UNFILTERED tables, only when filter is active", () => {
+  const state = ctx.makeState({ runs: ROWS });
+  state.engine.computedUnfiltered = [
+    { name: "summary", hasFilterSource: true, rows: ROWS },
+    { name: "nofs", hasFilterSource: false, rows: ROWS },
+  ];
+  // no ui / no filter -> nothing to narrow
+  eq(ctx.computedFilterInputs(state), []);
+  // a filter on the filter_source table -> its selected rows are emitted
+  ctx.ensureTableUi(state, "summary", "computed");
+  ctx.setColFilter(state, "summary", "backend", "feldera");
+  const cf = ctx.computedFilterInputs(state);
+  eq(cf.length, 1);
+  eq(cf[0].name, "summary");
+  eq(cf[0].filtered_rows.length, 2);
+  // a filter on a table WITHOUT a filter_source is ignored
+  ctx.ensureTableUi(state, "nofs", "computed");
+  ctx.setColFilter(state, "nofs", "backend", "feldera");
+  eq(ctx.computedFilterInputs(state).length, 1);
+});
+
+test("distinctScalarValues: sorted distinct, null for non-scalar columns", () => {
+  eq(ctx.distinctScalarValues(ROWS, "backend"), ["feldera", "flowlog"]);
+  eq(ctx.distinctScalarValues([{ x: 1 }, { x: undefined }, {}], "x"), ["", "1"]);
+  assert.equal(ctx.distinctScalarValues([{ x: { a: 1 } }], "x"), null);
+});
+
 test("isNumericValue accepts numbers and numeric strings only", () => {
   for (const v of [3, 0, -2.5, "4", " 1.0 ", "1e3"]) assert.equal(ctx.isNumericValue(v), true);
   for (const v of ["", "abc", null, undefined, {}, true, NaN, Infinity]) assert.equal(ctx.isNumericValue(v), false);

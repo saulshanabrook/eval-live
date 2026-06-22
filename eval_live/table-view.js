@@ -21,12 +21,16 @@
  * @param {boolean} filterable  show the filter toolbar + per-column inputs
  * @param {string} [description] clarifying subtitle
  * @param {Object} handlers     { onToggleCollapse(name), onSql(name,val),
- *                                onColFilter(name,col,val),
+ *                                onColFilter(name,col,val), onHighlight(name,mode),
  *                                onCheckbox(name,col,checkedValues,allValues) }
+ * @param {Array} [optionRows]   rows the checkbox dropdowns enumerate (the
+ *                               UNFILTERED rows, so options don't vanish as the
+ *                               displayed `rows` narrow). Defaults to `rows`.
  * @returns {{name, kind, rows, section, sync(state)}}
  */
-function buildTableView(name, rows, kind, filterable, description, handlers) {
+function buildTableView(name, rows, kind, filterable, description, handlers, optionRows) {
   const cols = columnsOf(rows);
+  optionRows = optionRows || rows;
 
   const section = document.createElement("div");
   section.className = "table-section";
@@ -101,20 +105,15 @@ function buildTableView(name, rows, kind, filterable, description, handlers) {
     sqlWrap.appendChild(hint);
     toolbar.appendChild(sqlWrap);
 
-    // Checkbox dropdowns for scalar columns with < 30 distinct values.
+    // Checkbox dropdowns for scalar columns with < 30 distinct values. Options
+    // come from optionRows (the unfiltered rows) so they stay stable as the
+    // displayed rows narrow.
     const dropdowns = document.createElement("div");
     dropdowns.className = "checkbox-dropdowns";
     for (const col of cols) {
-      const distinct = new Set();
-      let scalar = true;
-      for (const r of rows) {
-        const v = r[col];
-        if (v !== undefined && v !== null && typeof v === "object") { scalar = false; break; }
-        distinct.add(v === undefined || v === null ? "" : String(v));
-      }
-      if (!scalar) continue;
-      if (distinct.size >= 30) continue;     // too many to checkbox; use typed SQL
-      const values = [...distinct].sort();
+      const values = distinctScalarValues(optionRows, col);
+      if (values === null) continue;         // non-scalar column; no dropdown
+      if (values.length >= 30) continue;     // too many to checkbox; use typed SQL
 
       const details = document.createElement("details");
       details.className = "checkbox-dropdown";
