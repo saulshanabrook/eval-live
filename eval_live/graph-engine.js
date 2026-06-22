@@ -1,182 +1,171 @@
-/* Part of eval-live -- Pyodide graph + computed-table engine.
-   Loaded as a plain <script> (global functions, no ES modules): js() concatenates
-   all modules into one inline tag; index.html loads them as separate <script src>. */
+/* Part of eval-live -- the Pyodide engine, as a set of MEMOIZED ASYNC EFFECTS.
+   It owns no DOM: the graph bar and graph image are rendered by initEvalLive's
+   render() from state.engine.{graphs,activeGraph}. This module just turns
+   filtered data into engine outputs and writes them back through setState.
 
-async function initPyodideEngine(section, status, data, graphScript, evalLivePy, state) {
-  try {
-    const pyodide = await loadPyodide();
-    status.textContent = "Installing matplotlib...";
-    await pyodide.loadPackage("matplotlib");
-    status.textContent = "Running graph script...";
+   Two independent effects, each keyed on its inputs so Pyodide only re-runs when
+   something actually changed:
+     1. graphs + computed-table rows  <- rawFilteredData(state)   (raw filters)
+     2. computed->raw narrowing        <- computedFilterInputs(state) (computed filters)
+   Effect 1's input ignores the narrowing (see state.js), so the two never form a
+   recompute cycle. A debounce coalesces bursts of keystrokes; a running-lock
+   serializes Pyodide calls (it is single-threaded) and re-runs once if more work
+   arrived mid-flight.
 
-    pyodide.FS.writeFile("/home/pyodide/eval_live.py", evalLivePy);
-    await pyodide.runPythonAsync(graphScript);
+   `loadPyodide` is expected as a global, supplied by the embedding page (the
+   same assumption the previous engine made). Loaded as a plain <script>;
+   depends on state.js. */
 
-    // Graph UI
-    const bar = document.createElement("div");
-    bar.className = "graph-bar";
-    section.appendChild(bar);
-    const display = document.createElement("div");
-    display.className = "graph-display";
-    section.appendChild(display);
+function createEngine(graphScript, evalLivePy, setState) {
+  let pyodide = null;
+  let loadPromise = null;
+  const cache = { tableKey: null, narrowKey: null, graphKey: null };
+  let running = false;
+  let rerunRequested = false;
+  let debounceTimer = null;
+  let latestState = null;
 
-    let activeGraphName = null;
-
-    async function renderGraphs(inputData) {
-      pyodide.globals.set("__eval_live_data__", pyodide.toPy(inputData));
-      const resultProxy = await pyodide.runPythonAsync(
-        "import eval_live; eval_live.registry.run_graphs(__eval_live_data__)"
-      );
-      const graphs = resultProxy.toJs({ create_proxies: false });
-      resultProxy.destroy();
-      return graphs;
-    }
-
-    async function renderTables(inputData) {
-      pyodide.globals.set("__eval_live_data__", pyodide.toPy(inputData));
-      const resultProxy = await pyodide.runPythonAsync(
-        "import eval_live; eval_live.registry.run_tables(__eval_live_data__)"
-      );
-      const tables = resultProxy.toJs({ create_proxies: false });
-      resultProxy.destroy();
-      return tables.map(t => ({
-        name: t.get("name"),
-        rows: t.get("rows").map(r => Object.fromEntries(r.entries())),
-        hasFilterSource: t.get("has_filter_source"),
-      }));
-    }
-
-    async function callApplyTableFilters(tableFilters, inputData) {
-      pyodide.globals.set("__eval_live_data__", pyodide.toPy(inputData));
-      pyodide.globals.set("__eval_live_table_filters__", pyodide.toPy(tableFilters));
-      const resultProxy = await pyodide.runPythonAsync(
-        "import eval_live; eval_live.registry.apply_table_filters(__eval_live_table_filters__, __eval_live_data__)"
-      );
-      const result = resultProxy.toJs({ create_proxies: false });
-      resultProxy.destroy();
-      // Convert to plain JS object
-      const out = {};
-      for (const [k, v] of result.entries()) {
-        if (Array.isArray(v)) {
-          out[k] = v.map(r => r instanceof Map ? Object.fromEntries(r.entries()) : r);
-        } else {
-          out[k] = v;
-        }
-      }
-      return out;
-    }
-
-    async function showGraphs(inputData) {
-      const graphs = await renderGraphs(inputData);
-      if (!graphs || graphs.length === 0) {
-        status.textContent = "No graphs registered.";
-        return;
-      }
-
-      const graphMap = new Map();
-      for (const g of graphs) {
-        graphMap.set(g.get("name"), g.get("src"));
-      }
-
-      // Always rebuild buttons and display
-      bar.innerHTML = "";
-      display.innerHTML = "";
-
-      for (const g of graphs) {
-        const gName = g.get("name");
-        const btn = document.createElement("button");
-        btn.className = "graph-btn";
-        btn.textContent = gName;
-        btn.addEventListener("click", () => {
-          for (const b of bar.querySelectorAll(".graph-btn")) b.classList.remove("active");
-          btn.classList.add("active");
-          activeGraphName = gName;
-          display.innerHTML = "";
-          const src = graphMap.get(gName);
-          if (src) {
-            const img = document.createElement("img");
-            img.src = src;
-            img.alt = gName;
-            display.appendChild(img);
-          }
-        });
-        bar.appendChild(btn);
-      }
-
-      // Preserve active selection, or default to first
-      const selected = activeGraphName && graphMap.has(activeGraphName)
-        ? activeGraphName
-        : graphs[0].get("name");
-      activeGraphName = selected;
-      for (const btn of bar.querySelectorAll(".graph-btn")) {
-        if (btn.textContent === selected) { btn.click(); break; }
-      }
-    }
-
-    // Track which computed tables have filter_source
-    let computedTableMeta = [];
-
-    async function showComputedTables(inputData) {
-      const tables = await renderTables(inputData);
-
-      state.computedContainer.innerHTML = "";
-      state.computedTableStates.length = 0;
-      computedTableMeta = tables.map(t => ({
-        name: t.name,
-        hasFilterSource: t.hasFilterSource,
-      }));
-
-      for (const { name, rows, hasFilterSource } of tables) {
-        if (!rows || rows.length === 0) continue;
-        const sect = buildTable(name, rows, state.computedTableStates, state.onComputedFilterChange, hasFilterSource);
-        state.computedContainer.appendChild(sect);
-      }
-    }
-
-    /**
-     * Called when a computed table's text filter changes.
-     * Collects visible rows from all computed tables that have filter_source,
-     * calls apply_table_filters in Python to get filtered raw data,
-     * then applies that to the raw table DOM.
-     */
-    async function applyComputedFilters() {
-      // Build table_filters list for Python
-      const tableFilters = [];
-      for (const ct of state.computedTableStates) {
-        const meta = computedTableMeta.find(m => m.name === ct.tableName);
-        if (meta && meta.hasFilterSource) {
-          tableFilters.push({ name: ct.tableName, filtered_rows: ct.visibleRows });
-        }
-      }
-
-      if (tableFilters.length === 0) return;
-
-      const filteredData = await callApplyTableFilters(tableFilters, state.originalData);
-      applyFilteredDataToRawTables(filteredData, state.tableStates);
-    }
-
-    // Initial render
-    status.textContent = "";
-    await showGraphs(data);
-    await showComputedTables(data);
-
-    // Debounced re-render for raw filter changes
-    let rerenderTimer = null;
-    function rerender(filteredData) {
-      clearTimeout(rerenderTimer);
-      rerenderTimer = setTimeout(async () => {
-        // Re-run script to rebuild the registry
-        pyodide.runPython("import eval_live; eval_live.registry = None");
-        await pyodide.runPythonAsync(graphScript);
-        await showGraphs(filteredData);
-        await showComputedTables(filteredData);
-      }, 300);
-    }
-
-    return { rerender, applyComputedFilters };
-  } catch (err) {
-    status.textContent = "Graph error: " + err.message;
-    console.error(err);
-    return null;
+  function setStatus(status, text) {
+    setState((s) => { s.engine.status = status; s.engine.statusText = text || ""; });
   }
+
+  async function ensurePyodide() {
+    if (pyodide) return pyodide;
+    if (!loadPromise) {
+      loadPromise = (async () => {
+        setStatus("loading", "Loading Pyodide...");
+        const py = await loadPyodide();
+        setStatus("loading", "Installing matplotlib...");
+        await py.loadPackage("matplotlib");
+        py.FS.writeFile("/home/pyodide/eval_live.py", evalLivePy);
+        setStatus("loading", "Running graph script...");
+        await py.runPythonAsync(graphScript);
+        pyodide = py;
+        setStatus("ready", "");
+        return py;
+      })();
+    }
+    return loadPromise;
+  }
+
+  function setData(filteredData) {
+    pyodide.globals.set("__eval_live_data__", pyodide.toPy(filteredData));
+  }
+
+  async function runGraphs(filteredData) {
+    setData(filteredData);
+    const proxy = await pyodide.runPythonAsync(
+      "import eval_live; eval_live.registry.run_graphs(__eval_live_data__)");
+    const raw = proxy.toJs({ create_proxies: false });
+    proxy.destroy();
+    return raw.map((g) => ({ name: g.get("name"), src: g.get("src") }));
+  }
+
+  async function runTables(filteredData) {
+    setData(filteredData);
+    const proxy = await pyodide.runPythonAsync(
+      "import eval_live; eval_live.registry.run_tables(__eval_live_data__)");
+    const raw = proxy.toJs({ create_proxies: false });
+    proxy.destroy();
+    return raw.map((t) => ({
+      name: t.get("name"),
+      rows: t.get("rows").map((r) => Object.fromEntries(r.entries())),
+      hasFilterSource: t.get("has_filter_source"),
+    }));
+  }
+
+  async function runNarrowing(tableFilters, data) {
+    pyodide.globals.set("__eval_live_data__", pyodide.toPy(data));
+    pyodide.globals.set("__eval_live_table_filters__", pyodide.toPy(tableFilters));
+    const proxy = await pyodide.runPythonAsync(
+      "import eval_live; eval_live.registry.apply_table_filters(__eval_live_table_filters__, __eval_live_data__)");
+    const result = proxy.toJs({ create_proxies: false });
+    proxy.destroy();
+    const out = {};
+    for (const [k, v] of result.entries()) {
+      out[k] = Array.isArray(v)
+        ? v.map((r) => (r instanceof Map ? Object.fromEntries(r.entries()) : r))
+        : v;
+    }
+    return out;
+  }
+
+  async function runEffects() {
+    await ensurePyodide();
+    // Rebuild the registry at most once per pass, and only if something runs.
+    let registryFresh = false;
+    async function freshRegistry() {
+      if (registryFresh) return;
+      pyodide.runPython("import eval_live; eval_live.registry = None");
+      await pyodide.runPythonAsync(graphScript);
+      registryFresh = true;
+    }
+
+    // The three effects run in order A -> B -> C: B's input depends on A's
+    // output (computed-table rows), and C's input depends on B's output
+    // (narrowing). C (graphs) feeds back into nothing, so the chain is acyclic.
+
+    // A: computed-table rows, from the UN-narrowed raw data (avoids a cycle:
+    //    a computed table's filter must not change its own input rows).
+    const rawFd = rawFilteredData(latestState);
+    const tableKey = stableKey(rawFd);
+    if (tableKey !== cache.tableKey) {
+      cache.tableKey = tableKey;
+      await freshRegistry();
+      const computedTables = await runTables(rawFd);
+      setState((s) => { s.engine.computedTables = computedTables; });
+    }
+
+    // B: computed->raw narrowing, from the computed tables' filtered rows.
+    const cf = computedFilterInputs(latestState);
+    const narrowKey = stableKey(cf);
+    if (narrowKey !== cache.narrowKey) {
+      cache.narrowKey = narrowKey;
+      if (cf.length === 0) {
+        setState((s) => { s.engine.narrowing = null; });
+      } else {
+        await freshRegistry();
+        const narrowed = await runNarrowing(cf, latestState.data);
+        setState((s) => { s.engine.narrowing = narrowed; });
+      }
+    }
+
+    // C: graphs, from the EFFECTIVE (narrowed) data, so they reflect both raw
+    //    filters and computed-table filters.
+    const eff = effectiveRawData(latestState);
+    const graphKey = stableKey(eff);
+    if (graphKey !== cache.graphKey) {
+      cache.graphKey = graphKey;
+      await freshRegistry();
+      const graphs = await runGraphs(eff);
+      setState((s) => { s.engine.graphs = graphs; });
+    }
+  }
+
+  async function drain() {
+    if (running) { rerunRequested = true; return; }
+    running = true;
+    try {
+      do {
+        rerunRequested = false;
+        await runEffects();
+      } while (rerunRequested);
+    } catch (e) {
+      setStatus("error", String(e && e.message ? e.message : e));
+      // eslint-disable-next-line no-console
+      console.error("eval-live engine error:", e);
+    } finally {
+      running = false;
+    }
+  }
+
+  // Called by the owner after every render. Debounced so a burst of keystrokes
+  // collapses into one Pyodide pass; memo keys then skip work that did not change.
+  function tick(state) {
+    latestState = state;
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { drain(); }, 300);
+  }
+
+  return { tick };
 }

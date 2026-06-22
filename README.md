@@ -62,3 +62,37 @@ filter propagation.
 ## Standalone page
 
 Open `eval_live/index.html` in a browser to load a JSON file via file picker.
+
+## Architecture
+
+The viewer is a small state-driven app (no framework). There is one `state`
+object (`state.js`); events run reducers via `setState`, which re-renders:
+
+```
+event -> setState(reducer) -> render(state)  [+ engine.tick(state)]
+```
+
+- **state.js** — the single state object plus *pure* derivations (row filtering,
+  `rawFilteredData`, clause helpers) and reducers. No DOM, no async; unit-tested
+  directly in node.
+- **table-view.js** — `buildTableView` builds a table's DOM once, then
+  `sync(state)` reconciles it (collapsed class, input values, checkbox state, row
+  visibility). It stores no UI state, so collapse/filters survive re-renders.
+- **graph-engine.js** — `createEngine`: the expensive Pyodide work (graphs,
+  computed-table rows, computed→raw narrowing) as *memoized async effects* keyed
+  on their inputs, writing results back through `setState`.
+- **eval-live.js** — `initEvalLive`: owns the state, wires reducers, and
+  `render(state)` reconciles the whole page (graph bar, raw + computed tables).
+
+## Tests
+
+Pure-JS unit + DOM-smoke tests, no npm/jsdom (they run the browser modules in a
+`node:vm` context with a tiny DOM shim):
+
+```bash
+node test/state.test.mjs   # state core: filtering, reducers, SQL-clause helpers
+node test/dom.test.mjs      # initEvalLive end-to-end: filter / collapse / checkbox / clear
+```
+
+The AlaSQL row-evaluation path and the Pyodide engine are exercised in the
+browser, not in these tests.

@@ -38,6 +38,29 @@
   border-bottom: 2px solid #e0e0e0;
 }
 
+/* Clickable, collapsible heading. */
+.eval-live .table-heading {
+  cursor: pointer;
+  user-select: none;
+}
+
+.eval-live .collapse-caret {
+  display: inline-block;
+  margin-right: 0.45rem;
+  color: #999;
+  font-size: 0.85em;
+  transition: transform 0.12s ease;
+}
+
+.eval-live .table-section.collapsed .collapse-caret {
+  transform: rotate(-90deg);
+}
+
+/* When collapsed, hide everything in the section except the heading. */
+.eval-live .table-section.collapsed > *:not(h2) {
+  display: none;
+}
+
 .eval-live .row-count {
   color: #888;
   font-size: 0.8rem;
@@ -98,6 +121,32 @@
 
 .eval-live tbody tr:hover {
   background: #f8f9fc;
+}
+
+/* Best number in a row, when there are >= 2 numbers to compare. */
+.eval-live td.cell-best {
+  background: #e3f5e8;
+  font-weight: 600;
+  color: #1b6b35;
+}
+
+/* Per-table controls row (highlight mode selector). */
+.eval-live .table-controls {
+  margin: -0.2rem 0 0.7rem;
+}
+
+.eval-live .highlight-control {
+  font-size: 0.78rem;
+  color: #777;
+}
+
+.eval-live .highlight-control select {
+  font-size: 0.78rem;
+  padding: 0.1rem 0.3rem;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background: #fff;
+  color: #333;
 }
 
 .eval-live tbody tr:last-child td {
