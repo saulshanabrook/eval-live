@@ -186,4 +186,22 @@ test("highlight selector switches lowest -> highest -> none", () => {
   assert.equal(best(trs[0]).length, 0);
 });
 
+test("computed-table columns come from optionRows, so they survive narrowing", () => {
+  // Displayed rows (narrowed) omit the `error` key entirely; the unfiltered
+  // optionRows still have it. The column must NOT vanish.
+  const displayed = [{ file: "a.egg", status: "ok" }];
+  const optionRows = [
+    { file: "a.egg", status: "ok" },
+    { file: "b.egg", status: "fail", error: "boom" },
+  ];
+  const view = ctx.buildTableView(
+    "Summary", displayed, "computed", true, undefined, {}, optionRows);
+  const headerTr = view.section.findTag("thead")._children[0];
+  const headers = headerTr._children.map((th) => th.textContent).filter(Boolean);
+  assert.deepEqual(headers, ["file", "status", "error"]);
+  // The lone displayed row renders the missing cell as "" (cellText(undefined)).
+  const firstBodyRow = view.section.findTag("tbody")._children[0];
+  assert.equal(firstBodyRow._children.length, 4); // expand col + 3 data cols
+});
+
 console.log(`\n${passed} tests passed`);

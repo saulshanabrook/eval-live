@@ -29,8 +29,10 @@
  * @returns {{name, kind, rows, section, sync(state)}}
  */
 function buildTableView(name, rows, kind, filterable, description, handlers, optionRows) {
-  const cols = columnsOf(rows);
   optionRows = optionRows || rows;
+  // Columns from the unfiltered optionRows, not the narrowed `rows`, so a column
+  // doesn't vanish when filtering leaves only rows that omit its key.
+  const cols = columnsOf(optionRows);
 
   const section = document.createElement("div");
   section.className = "table-section";
