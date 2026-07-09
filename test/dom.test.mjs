@@ -204,4 +204,27 @@ test("computed-table columns come from optionRows, so they survive narrowing", (
   assert.equal(firstBodyRow._children.length, 4); // expand col + 3 data cols
 });
 
+test("styled cells render their text + apply inline style, and caption shows", () => {
+  const rows = [
+    { file: "a.egg", result: { text: "faster", style: { color: "green" } } },
+    { file: "b.egg", result: { text: "slower", style: { color: "red", bold: true } } },
+  ];
+  const view = ctx.buildTableView(
+    "Ratios", rows, "computed", false, "Ratio is target / baseline.", {}, rows);
+
+  // caption is rendered (as the table description <p>)
+  const desc = view.section.find("table-description");
+  assert.ok(desc && desc.textContent.includes("target / baseline"), "caption missing");
+
+  // styled cell -> its text, plus inline visual style (not the JSON dump)
+  const bodyRows = view.section.findTag("tbody")._children;
+  const good = bodyRows[0]._children[2]; // [expand, file, result]
+  assert.equal(good.textContent, "faster");
+  assert.equal(good.style.color, "green");
+  const bad = bodyRows[1]._children[2];
+  assert.equal(bad.textContent, "slower");
+  assert.equal(bad.style.color, "red");
+  assert.equal(bad.style.fontWeight, "600");
+});
+
 console.log(`\n${passed} tests passed`);

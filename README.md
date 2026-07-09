@@ -2,7 +2,9 @@
 
 Interactive HTML tables and Pyodide-powered graphs for evaluation results.
 Renders JSON data as filterable, collapsible tables with optional in-browser
-Python graphs and computed summary tables.
+Python graphs and computed summary tables. The same table and graph definitions
+also render to the terminal and to files (PDF / JSON / LaTeX), so results look
+consistent across the web, the CLI, and dumps.
 
 ## Install
 
@@ -58,6 +60,59 @@ eval_live.registry = reg
 
 See `eval_live/eval_live.py` for full documentation on graphs, tables, and
 filter propagation.
+
+## Rendering to the terminal and disk
+
+A `Registry` renders outside the browser too, from the same `data` dict and the
+same table definitions, so a table looks consistent everywhere:
+
+```python
+reg.render_to_console(data)       # pretty tables in the terminal
+reg.render_to_dir(data, "out/")   # graphs -> <slug>.pdf, tables -> <slug>.json + <slug>.tex
+```
+
+`render_to_console` uses `rich` (a normal dependency) and accepts an optional
+`rich.Console`. `render_to_dir` needs `matplotlib` (`pip install
+eval-live[render]`). Graphs are skipped in the terminal (no image).
+
+## Table display: captions and styled cells
+
+Columns and headers are simply the row keys, in first-seen order — so name your
+keys the way you want them to appear. The only presentation option is an
+optional caption:
+
+```python
+reg.table("Timings", timings_fn, caption="Lower is better.")   # caption shown under the table
+```
+
+### Styled cells
+
+A cell is normally a scalar. To style it, return a dict instead:
+
+```python
+{"text": "1.5x", "style": {"color": "green", "bold": True}}
+{"text": "slow", "style": "red"}     # a bare string is shorthand for the color
+```
+
+`style` is **purely visual** — eval-live has no notion of "good"/"bad"; what a
+style means is up to you. It is a dict with any of:
+
+- `color` — a color (see below)
+- `bold` — `true` for bold
+- `dim` — `true` for dimmed/muted
+
+or a plain string used as the `color`.
+
+**What colors work:** the color is passed to the terminal renderer (`rich`) and,
+in the browser, set as a CSS color, so use a value both understand. The basic
+names — `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` —
+and hex such as `#1b6b35` work everywhere. The terminal additionally accepts any
+[rich style](https://rich.readthedocs.io/en/stable/style.html); the browser
+additionally accepts any CSS color. LaTeX dumps ignore styling and keep the text.
+
+To pass parameters to computed tables/graphs, add an ordinary one-row table to
+the data (e.g. `data["params"] = [{"threshold": 0.5}]`) and read it in your
+functions. It is shown as a small raw table like any other.
 
 ## Standalone page
 

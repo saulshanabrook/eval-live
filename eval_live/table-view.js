@@ -208,7 +208,12 @@ function buildTableView(name, rows, kind, filterable, description, handlers, opt
     const tds = {};
     for (const col of cols) {
       const td = document.createElement("td");
-      td.textContent = cellText(row[col]);
+      const val = row[col];
+      td.textContent = cellText(val);
+      // Styled cell ({text, style}) -> inline visual style (color/bold/dim).
+      if (val !== null && typeof val === "object" && val.style) {
+        applyCellStyle(td, val.style);
+      }
       tds[col] = td;
       tr.appendChild(td);
     }

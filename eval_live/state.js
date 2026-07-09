@@ -67,15 +67,30 @@ function ensureTableUi(state, name, kind) {
 // ---- pure helpers ---------------------------------------------------------
 
 // Cell -> text, matching the historic rendering exactly (null -> "null" via
-// JSON.stringify; undefined -> "").
+// JSON.stringify; undefined -> ""). A styled cell ({text, style}) renders its
+// text; the style drives a CSS class in the table view, not the text.
 function cellText(val) {
   if (val === undefined) return "";
+  if (val !== null && typeof val === "object" && "text" in val) {
+    return val.text === null || val.text === undefined ? "" : String(val.text);
+  }
   if (typeof val === "object") return JSON.stringify(val);
   return String(val);
 }
 
 function columnsOf(rows) {
   return [...new Set(rows.flatMap(Object.keys))];
+}
+
+// Apply a styled cell's visual `style` to a <td>. `style` is a dict with any of
+// {color, bold, dim}, or a plain string used as the color. eval-live only
+// applies visual attributes; what a style signifies is up to the caller.
+function applyCellStyle(td, style) {
+  if (!style) return;
+  if (typeof style === "string") { td.style.color = style; return; }
+  if (style.color) td.style.color = style.color;
+  if (style.bold) td.style.fontWeight = "600";
+  if (style.dim) td.style.opacity = "0.65";
 }
 
 // Indices of rows passing a table's filter ui: per-column substring inputs

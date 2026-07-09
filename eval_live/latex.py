@@ -13,7 +13,13 @@ _ESCAPES = {
 
 
 def escape(value):
-    """Escape a single cell value so it renders literally in LaTeX."""
+    """Escape a single cell value so it renders literally in LaTeX.
+
+    A styled cell (``{"text": ..., "style": ...}``) is unwrapped to its text;
+    the style is ignored in LaTeX.
+    """
+    if isinstance(value, dict) and "text" in value:
+        value = value["text"]
     text = "" if value is None else str(value)
     return "".join(_ESCAPES.get(ch, ch) for ch in text)
 
@@ -22,7 +28,8 @@ def table(rows, cols):
     """Render ``rows`` (list of dicts) as a standalone LaTeX ``tabular``.
 
     Uses ``\\hline`` rules so it compiles without extra packages.  ``cols`` is
-    the ordered column list; missing keys render as empty cells.
+    the ordered list of row keys, also used as headers; missing keys render as
+    empty cells.
     """
     lines = [r"\begin{tabular}{" + "l" * len(cols) + "}", r"\hline"]
     lines.append(" & ".join(escape(c) for c in cols) + r" \\")

@@ -85,7 +85,7 @@ class Registry:
 
     def __init__(self):
         self._graphs = []   # list of (name, fn)
-        self._tables = []   # list of (name, fn, filter_source_fn | None)
+        self._tables = []   # list of (name, fn, filter_source_fn | None, caption | None)
 
     def graph(self, name, fn):
         """Register a graph function.
@@ -99,7 +99,7 @@ class Registry:
         """
         self._graphs.append((name, fn))
 
-    def table(self, name, fn, filter_source=None):
+    def table(self, name, fn, filter_source=None, *, caption=None):
         """Register a computed table function.
 
         Parameters
@@ -107,7 +107,10 @@ class Registry:
         name : str
             Display name shown as the table heading.
         fn : callable
-            ``fn(data) -> list[dict]``  — each dict is one row.
+            ``fn(data) -> list[dict]``  — each dict is one row.  Columns and
+            headers are the row keys, in first-seen order.  A cell value may be a
+            scalar or a styled cell ``{"text": ..., "style": ...}`` (see
+            ``console._cell_parts``).
         filter_source : callable or None
             Optional.  ``filter_source(filtered_rows, data) -> data``
             Called when the user filters this computed table.  Receives
@@ -115,8 +118,10 @@ class Registry:
             may already be narrowed by a previous table's filter_source);
             returns a new data dict with raw rows narrowed accordingly.
             See the module docstring for a full example.
+        caption : str or None
+            Optional caption shown under the table in the terminal and web view.
         """
-        self._tables.append((name, fn, filter_source))
+        self._tables.append((name, fn, filter_source, caption))
 
     def run_graphs(self, data):
         """Run all registered graph functions and return rendered results.
@@ -171,7 +176,7 @@ class Registry:
             plt.close(fig)
             written.append(path)
 
-        for name, fn, _fs in self._tables:
+        for name, fn, _fs, _caption in self._tables:
             rows = fn(data)
             cols = list(dict.fromkeys(k for r in rows for k in r))
 
@@ -191,17 +196,27 @@ class Registry:
         """Run all registered table functions and return their rows.
 
         Returns a list of ``{"name": str, "rows": list[dict],
-        "has_filter_source": bool}`` dicts.  Called by the JS engine.
+        "has_filter_source": bool, "caption": str|None}`` dicts.  Called by the
+        JS engine.
         """
         results = []
-        for name, fn, fs in self._tables:
-            rows = fn(data)
+        for name, fn, fs, caption in self._tables:
             results.append({
                 "name": name,
-                "rows": rows,
+                "rows": fn(data),
                 "has_filter_source": fs is not None,
+                "caption": caption,
             })
         return results
+
+    def render_to_console(self, data, console=None):
+        """Render every registered table to a terminal with rich (graphs are
+        skipped). ``console`` is an optional ``rich.Console``; it is returned.
+        See ``console.py``.
+        """
+        from . import console as console_renderer
+
+        return console_renderer.render(self._tables, data, console)
 
     def apply_table_filters(self, table_filters, data):
         """Chain filter_source functions for all filtered computed tables.
@@ -227,7 +242,7 @@ class Registry:
             function in registration order.
         """
         filtered_data = data
-        for name, _fn, fs in self._tables:
+        for name, _fn, fs, _caption in self._tables:
             if fs is None:
                 continue
             for tf in table_filters:

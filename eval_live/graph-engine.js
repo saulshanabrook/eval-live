@@ -37,6 +37,10 @@ function createEngine(graphScript, evalLivePy, setState) {
         const py = await loadPyodide();
         setStatus("loading", "Installing matplotlib...");
         await py.loadPackage("matplotlib");
+        // Load any other packages the graph script imports (e.g. scipy, pandas)
+        // so table/graph functions can use them, as matplotlib already can.
+        setStatus("loading", "Loading script packages...");
+        await py.loadPackagesFromImports(graphScript);
         py.FS.writeFile("/home/pyodide/eval_live.py", evalLivePy);
         setStatus("loading", "Running graph script...");
         await py.runPythonAsync(graphScript);
@@ -71,6 +75,7 @@ function createEngine(graphScript, evalLivePy, setState) {
       name: t.get("name"),
       rows: t.get("rows").map((r) => Object.fromEntries(r.entries())),
       hasFilterSource: t.get("has_filter_source"),
+      caption: t.get("caption"),
     }));
   }
 
