@@ -142,17 +142,21 @@ class Registry:
     def render_to_dir(self, data, outdir, fmt="pdf", dpi=150):
         """Render every registered graph and table to files on disk, locally
         (no browser/Pyodide). Graphs are written as ``<slug>.<fmt>`` (PDF by
-        default) and tables as ``<slug>.csv``. Returns the list of written
-        paths. This is the on-disk counterpart to ``run_graphs``/``run_tables``
-        (which return base64/JSON for the live viewer). Requires matplotlib to
-        be installed in the local environment.
+        default); each table is written both as ``<slug>.json`` (the same list
+        of row dicts the live viewer consumes) and as ``<slug>.tex`` (a LaTeX
+        ``tabular``). Returns the list of written paths. This is the on-disk
+        counterpart to ``run_graphs``/``run_tables`` (which return base64/JSON
+        for the live viewer). Requires matplotlib to be installed in the local
+        environment.
         """
         import os
         import re
-        import csv
+        import json
         import matplotlib
         matplotlib.use("AGG")
         import matplotlib.pyplot as plt
+
+        from . import latex
 
         os.makedirs(outdir, exist_ok=True)
         written = []
@@ -169,14 +173,17 @@ class Registry:
 
         for name, fn, _fs in self._tables:
             rows = fn(data)
-            path = os.path.join(outdir, f"{slug(name)}.csv")
             cols = list(dict.fromkeys(k for r in rows for k in r))
-            with open(path, "w", newline="") as f:
-                w = csv.DictWriter(f, fieldnames=cols, restval="",
-                                   extrasaction="ignore")
-                w.writeheader()
-                w.writerows(rows)
-            written.append(path)
+
+            json_path = os.path.join(outdir, f"{slug(name)}.json")
+            with open(json_path, "w") as f:
+                json.dump(rows, f, indent=2)
+            written.append(json_path)
+
+            tex_path = os.path.join(outdir, f"{slug(name)}.tex")
+            with open(tex_path, "w") as f:
+                f.write(latex.table(rows, cols))
+            written.append(tex_path)
 
         return written
 

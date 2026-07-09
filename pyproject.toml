@@ -9,7 +9,7 @@ description = "Interactive HTML tables and Pyodide-powered graphs for evaluation
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
-# Only Registry.render_to_dir (local on-disk PDF/CSV rendering) needs a local
+# Only Registry.render_to_dir (local on-disk PDF/JSON/LaTeX rendering) needs a local
 # matplotlib. The browser viewer uses Pyodide's own matplotlib. Install with
 # `pip install -e .[render]` to use the local renderer.
 render = ["matplotlib>=3.5"]
