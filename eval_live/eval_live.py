@@ -178,6 +178,8 @@ class Registry:
 
         for name, fn, _fs, _caption in self._tables:
             rows = fn(data)
+            if not rows:
+                continue
             cols = list(dict.fromkeys(k for r in rows for k in r))
 
             json_path = os.path.join(outdir, f"{slug(name)}.json")
@@ -209,14 +211,16 @@ class Registry:
             })
         return results
 
-    def render_to_console(self, data, console=None):
-        """Render every registered table to a terminal with rich (graphs are
-        skipped). ``console`` is an optional ``rich.Console``; it is returned.
-        See ``console.py``.
+    def render_to_console(self, data, tables=None, console=None):
+        """Render registered tables to a terminal with rich (graphs are skipped).
+
+        ``tables`` is an optional ordered list of table names to render (others
+        skipped; empty tables skipped); ``None`` renders all. ``console`` is an
+        optional ``rich.Console``; it is returned. See ``console.py``.
         """
         from . import console as console_renderer
 
-        return console_renderer.render(self._tables, data, console)
+        return console_renderer.render(self._tables, data, console, names=tables)
 
     def apply_table_filters(self, table_filters, data):
         """Chain filter_source functions for all filtered computed tables.

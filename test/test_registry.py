@@ -31,10 +31,11 @@ def ratios(_data):
 
 reg = eval_live.Registry()
 reg.table("Ratios", ratios, caption="Ratio is target / baseline.")
+reg.table("Empty", lambda _d: [])  # self-suppresses (no rows)
 data = {}
 
 rt = reg.run_tables(data)
-check("run_tables one entry", len(rt) == 1)
+check("run_tables one entry per registered table", len(rt) == 2)
 check("run_tables carries caption", rt[0]["caption"] == "Ratio is target / baseline.")
 check("run_tables has_filter_source False", rt[0]["has_filter_source"] is False)
 check("run_tables has no columns key", "columns" not in rt[0])
@@ -48,8 +49,14 @@ check("latex unwraps styled cells", "faster" in tex and "'text'" not in tex)
 try:
     import rich  # noqa: F401
 
-    reg.render_to_console(data)  # should not raise
-    check("render_to_console runs with rich", True)
+    reg.render_to_console(data)  # renders non-empty tables, skips "Empty"
+    reg.render_to_console(data, tables=["Ratios"])  # explicit selection
+    try:
+        reg.render_to_console(data, tables=["Nope"])
+        raise AssertionError("expected ValueError for unknown table")
+    except ValueError:
+        pass
+    check("render_to_console runs + selects + rejects unknown names", True)
 except ImportError:
     print("  skip render_to_console (rich not installed)")
 
@@ -59,7 +66,8 @@ try:
     with tempfile.TemporaryDirectory() as d:
         written = reg.render_to_dir(data, d)
         names = sorted(os.path.basename(p) for p in written)
-        check("render_to_dir writes json+tex", names == ["ratios.json", "ratios.tex"])
+        # "Empty" self-suppresses -> only the Ratios files are written.
+        check("render_to_dir writes non-empty tables only", names == ["ratios.json", "ratios.tex"])
 except ImportError:
     print("  skip render_to_dir (matplotlib not installed)")
 
