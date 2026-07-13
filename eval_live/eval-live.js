@@ -32,8 +32,10 @@ const TABLE_DESCRIPTIONS = {
  * @param {string} [name] - project name shown in the heading
  * @param {string} [graphScript] - Python building an eval_live.Registry
  * @param {string} [evalLivePy] - source of eval_live.py
+ * @param {Object.<string,string>} [extraModules] - {filename: source} extra
+ *   Python modules written to the Pyodide filesystem, importable by graphScript
  */
-function initEvalLive(container, data, name, graphScript, evalLivePy) {
+function initEvalLive(container, data, name, graphScript, evalLivePy, extraModules = {}) {
   if (typeof container === "string") container = document.getElementById(container);
   container.classList.add("eval-live");
   container.innerHTML = "";
@@ -188,7 +190,7 @@ function initEvalLive(container, data, name, graphScript, evalLivePy) {
 
   render();
   if (graphScript && evalLivePy) {
-    engine = createEngine(graphScript, evalLivePy, setState);
+    engine = createEngine(graphScript, evalLivePy, setState, extraModules);
     engine.tick(state);     // kick off Pyodide load + initial graphs/tables
   }
 

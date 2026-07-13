@@ -16,7 +16,7 @@
    same assumption the previous engine made). Loaded as a plain <script>;
    depends on state.js. */
 
-function createEngine(graphScript, evalLivePy, setState) {
+function createEngine(graphScript, evalLivePy, setState, extraModules = {}) {
   let pyodide = null;
   let loadPromise = null;
   const cache = { rawKey: null, narrowKey: null, displayKey: null, graphKey: null };
@@ -37,11 +37,19 @@ function createEngine(graphScript, evalLivePy, setState) {
         const py = await loadPyodide();
         setStatus("loading", "Installing matplotlib...");
         await py.loadPackage("matplotlib");
-        // Load any other packages the graph script imports (e.g. scipy, pandas)
-        // so table/graph functions can use them, as matplotlib already can.
+        // Load any other packages imported by the graph script or the caller's
+        // extra modules (e.g. scipy, pandas), as matplotlib already is. Extra
+        // modules are scanned too since the graph script may only `import` them
+        // while the packages they need live inside those modules.
         setStatus("loading", "Loading script packages...");
-        await py.loadPackagesFromImports(graphScript);
+        for (const src of [graphScript, ...Object.values(extraModules)]) {
+          await py.loadPackagesFromImports(src);
+        }
         py.FS.writeFile("/home/pyodide/eval_live.py", evalLivePy);
+        // Caller-provided Python modules, importable by the graph script.
+        for (const [filename, source] of Object.entries(extraModules)) {
+          py.FS.writeFile("/home/pyodide/" + filename, source);
+        }
         setStatus("loading", "Running graph script...");
         await py.runPythonAsync(graphScript);
         pyodide = py;
