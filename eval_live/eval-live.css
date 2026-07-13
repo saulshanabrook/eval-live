@@ -85,7 +85,10 @@
 .eval-live table {
   border-collapse: separate;
   border-spacing: 0;
-  width: 100%;
+  /* Size columns to their content (no cramped wrapping) but still fill the
+     container; the .table-wrap scrolls horizontally when content is wider. */
+  width: max-content;
+  min-width: 100%;
   font-size: 0.85rem;
   background: #fff;
   border-radius: 8px;
