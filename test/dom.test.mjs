@@ -417,6 +417,17 @@ test("legacy initEvalLive accepts reserved table names", () => {
   assert.equal(api.getState().ui.tables.constructor.collapsed, true);
 });
 
+test("legacy Pyodide inputs restore ordinary objects without losing reserved keys", () => {
+  const data = ctx.dictionary();
+  data.__proto__ = [Object.assign(ctx.dictionary(), { constructor: 8 })];
+  const plain = ctx.plainInteropValue(data);
+
+  assert.notEqual(Object.getPrototypeOf(plain), null);
+  assert.equal(Object.prototype.hasOwnProperty.call(plain, "__proto__"), true);
+  assert.notEqual(Object.getPrototypeOf(plain.__proto__[0]), null);
+  assert.equal(plain.__proto__[0].constructor, 8);
+});
+
 test("precomputed table and column ids are required and unique", () => {
   const root = new El("div");
   assert.throws(
