@@ -17,6 +17,7 @@ class El {
     this._classes = new Set();
     this._text = "";
     this._listeners = {};
+    this.dataset = {};
     this.style = {};
     this.value = "";
     this.checked = false;
@@ -287,6 +288,71 @@ test("precomputed catalogs preserve order, sections, captions, and duplicate nam
   assert.equal(api.getState().ui.tables.constructor.collapsed, false);
 });
 
+test("precomputed report catalogs preserve table and message block order", () => {
+  const root = new El("div");
+  ctx.initEvalLiveCatalog(root, [
+    {
+      id: "timing",
+      title: "Engine Timing",
+      blocks: [
+        { kind: "table", id: "compact", name: "a.egg", rows: [{ target: "main" }] },
+        {
+          kind: "message",
+          id: "timing-caption",
+          text: "Other is wall time minus recorded phases.",
+          tone: "muted",
+          layout: "caption",
+        },
+      ],
+    },
+    {
+      id: "details",
+      title: "Detailed Timing",
+      blocks: [
+        { kind: "table", id: "present", name: "main", rows: [{ ruleset: "simplify" }] },
+        {
+          kind: "message",
+          id: "missing",
+          title: "dd",
+          text: "Status: missing result",
+          tone: "warning",
+        },
+      ],
+    },
+    {
+      id: "notes",
+      title: "Notes",
+      blocks: [{ kind: "message", id: "only-note", text: "No table required." }],
+    },
+  ]);
+
+  const reportSections = root.findAll("precomputed-report-section");
+  const children = reportSections.flatMap((section) => section._children);
+  assert.deepEqual(reportSections.map((section) => section.dataset.sectionId),
+    ["timing", "details", "notes"]);
+  assert.deepEqual(
+    children.map((child) => child.className),
+    [
+      "report-section-heading",
+      "table-section",
+      "report-message tone-muted layout-caption",
+      "report-section-heading",
+      "table-section",
+      "report-message tone-warning layout-text",
+      "report-section-heading",
+      "report-message tone-default layout-text",
+    ],
+  );
+  assert.deepEqual(root.findAll("report-section-heading").map((heading) => heading.textContent),
+    ["Engine Timing", "Detailed Timing", "Notes"]);
+  assert.deepEqual(root.findAll("table-title").map((title) => title.textContent), ["a.egg", "main"]);
+  assert.deepEqual(root.findAll("report-message").map((message) => message.textContent), [
+    "Other is wall time minus recorded phases.",
+    "dd — Status: missing result",
+    "No table required.",
+  ]);
+});
+
 test("precomputed columns separate ids from duplicate labels and formatted values", () => {
   const root = new El("div");
   const api = ctx.initEvalLiveTables(root, [{
@@ -455,6 +521,30 @@ test("precomputed table and column ids are required and unique", () => {
       rows: [],
     }]),
     /alignment must be left, center, or right/,
+  );
+  assert.throws(
+    () => ctx.initEvalLiveCatalog(root, [
+      { id: "same", blocks: [] },
+      { id: "same", blocks: [] },
+    ]),
+    /duplicate section id/,
+  );
+  assert.throws(
+    () => ctx.initEvalLiveCatalog(root, [{
+      id: "blocks",
+      blocks: [
+        { kind: "message", id: "same", text: "A" },
+        { kind: "message", id: "same", text: "B" },
+      ],
+    }]),
+    /duplicate block id/,
+  );
+  assert.throws(
+    () => ctx.initEvalLiveCatalog(root, [{
+      id: "message-style",
+      blocks: [{ kind: "message", id: "bad-tone", text: "A", tone: "typo" }],
+    }]),
+    /tone is not supported/,
   );
 });
 

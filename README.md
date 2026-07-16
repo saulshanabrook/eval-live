@@ -110,6 +110,36 @@ single report row often mixes unlike units. Viewers can still choose `lowest`
 or `highest` from an individual table's highlight control when that comparison
 is meaningful.
 
+When tables and explanatory messages must retain one exact document order, use
+`initEvalLiveCatalog` with the report's section hierarchy. Table blocks use the
+same descriptor fields as above plus `kind: "table"`; message blocks are inert
+text with `kind: "message"`, a stable `id`, `text`, and optional `title`, `tone`,
+and `layout`:
+
+```js
+initEvalLiveCatalog("eval-live-root", [
+  {
+    id: "timing",
+    title: "Engine Timing",
+    blocks: [
+      {kind: "table", id: "summary", name: "Summary", rows: results},
+      {
+        kind: "message",
+        id: "timing-note",
+        text: "Other is wall time minus recorded phases.",
+        tone: "muted",
+        layout: "caption",
+      },
+    ],
+  },
+], "Benchmark Report");
+```
+
+Section and block order are preserved, including sections containing only
+messages. Messages are rendered with `textContent`; they do not receive table
+filters or enter table UI state. Built-in tones are `default`, `positive`,
+`negative`, `warning`, `error`, and `muted`; layouts are `text` and `caption`.
+
 ## Graphs and computed tables
 
 Define graphs and tables in a Python script using the `Registry` API:
@@ -211,8 +241,9 @@ event -> setState(reducer) -> render(state)  [+ engine.tick(state)]
   and all computed tables. The narrowing *selection* and the checkbox *options*
   are taken from the unfiltered tables (`computedUnfiltered`), so options don't
   vanish as the displayed rows shrink, and there is no recompute cycle.
-- **eval-live.js** — `initEvalLive` and `initEvalLiveTables`: own the state, wire
-  reducers, and reconcile graph, raw, computed, and precomputed table views.
+- **eval-live.js** — `initEvalLive`, `initEvalLiveTables`, and
+  `initEvalLiveCatalog`: own the state, wire reducers, and reconcile graph, raw,
+  computed, and precomputed report views.
 
 ## Tests
 
