@@ -91,6 +91,12 @@ of each row key, preserving the original API's behavior. AlaSQL accepts ordinary
 ids directly; JavaScript prototype names can be qualified with the built-in
 `source` alias, for example `source.constructor < 10`.
 
+Choose explicit column ids as ASCII SQL identifiers (`[A-Za-z_][A-Za-z0-9_]*`)
+that are not SQL keywords; put unrestricted human text in `name`. This keeps
+typed SQL and checkbox-generated clauses unambiguous. JavaScript prototype
+names such as `constructor` are supported through the `source` qualification
+shown above.
+
 A cell may be a primitive, the existing `{text, style}` styled-cell shape, or
 `{value, text, style}`. The latter shape is recognized only when both `value`
 and `text` are own properties, so ordinary objects that happen to contain a
