@@ -16,7 +16,8 @@
   margin-bottom: 1.5rem;
 }
 
-.eval-live .raw-tables-header {
+.eval-live .raw-tables-header,
+.eval-live .report-section-heading {
   font-size: 1.4rem;
   font-weight: 700;
   margin-top: 2rem;

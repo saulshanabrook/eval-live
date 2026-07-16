@@ -94,7 +94,7 @@ function createEngine(graphScript, evalLivePy, setState, extraModules = {}) {
       "import eval_live; eval_live.registry.apply_table_filters(__eval_live_table_filters__, __eval_live_data__)");
     const result = proxy.toJs({ create_proxies: false });
     proxy.destroy();
-    const out = {};
+    const out = dictionary();
     for (const [k, v] of result.entries()) {
       out[k] = Array.isArray(v)
         ? v.map((r) => (r instanceof Map ? Object.fromEntries(r.entries()) : r))

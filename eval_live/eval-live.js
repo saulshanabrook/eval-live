@@ -36,6 +36,98 @@ const TABLE_DESCRIPTIONS = {
  *   Python modules written to the Pyodide filesystem, importable by graphScript
  */
 function initEvalLive(container, data, name, graphScript, evalLivePy, extraModules = {}) {
+  return initEvalLiveApp(container, data, name, graphScript, evalLivePy, extraModules, []);
+}
+
+/**
+ * Render an ordered catalog of already-computed, independently filterable
+ * tables. This entry point does not create the graph engine or load Pyodide.
+ *
+ * Each descriptor is `{id, name, rows, section?, caption?, columns?}`. `id` is
+ * the unique, stable UI-state key; duplicate displayed `name` values are
+ * allowed. Optional columns are ordered `{id, name, alignment?}` descriptors.
+ * Descriptor, column, and row order are preserved.
+ *
+ * @param {HTMLElement|string} container
+ * @param {Array} tables
+ * @param {string} [name] - project name shown in the heading
+ */
+function initEvalLiveTables(container, tables, name) {
+  return initEvalLiveApp(container, {}, name, null, null, {}, normalizePrecomputedTables(tables));
+}
+
+function normalizePrecomputedTables(tables) {
+  if (!Array.isArray(tables)) throw new TypeError("tables must be an array");
+  const ids = new Set();
+  return tables.map((table, tableIndex) => {
+    if (table === null || typeof table !== "object" || Array.isArray(table)) {
+      throw new TypeError(`table ${tableIndex} must be an object`);
+    }
+    const id = ownValue(table, "id");
+    const name = ownValue(table, "name");
+    const rows = ownValue(table, "rows");
+    const section = ownValue(table, "section");
+    const caption = ownValue(table, "caption");
+    const columns = ownValue(table, "columns");
+    if (typeof id !== "string" || id.length === 0) {
+      throw new TypeError(`table ${tableIndex} id must be a non-empty string`);
+    }
+    if (ids.has(id)) throw new TypeError(`duplicate table id: ${id}`);
+    ids.add(id);
+    if (typeof name !== "string" || name.length === 0) {
+      throw new TypeError(`table ${id} name must be a non-empty string`);
+    }
+    if (!Array.isArray(rows)) throw new TypeError(`table ${id} rows must be an array`);
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      const row = rows[rowIndex];
+      if (row === null || typeof row !== "object" || Array.isArray(row)) {
+        throw new TypeError(`table ${id} row ${rowIndex} must be an object`);
+      }
+    }
+    if (section != null && typeof section !== "string") {
+      throw new TypeError(`table ${id} section must be a string`);
+    }
+    if (caption != null && typeof caption !== "string") {
+      throw new TypeError(`table ${id} caption must be a string`);
+    }
+    return {
+      id,
+      name,
+      rows,
+      section: section || null,
+      caption: caption || null,
+      columns: normalizePrecomputedColumns(columns, id),
+    };
+  });
+}
+
+function normalizePrecomputedColumns(columns, tableId) {
+  if (columns == null) return null;
+  if (!Array.isArray(columns)) throw new TypeError(`table ${tableId} columns must be an array`);
+  const ids = new Set();
+  return columns.map((column, columnIndex) => {
+    if (column === null || typeof column !== "object" || Array.isArray(column)) {
+      throw new TypeError(`table ${tableId} column ${columnIndex} must be an object`);
+    }
+    const id = ownValue(column, "id");
+    const name = ownValue(column, "name");
+    const alignment = ownValue(column, "alignment");
+    if (typeof id !== "string" || id.length === 0) {
+      throw new TypeError(`table ${tableId} column ${columnIndex} id must be a non-empty string`);
+    }
+    if (ids.has(id)) throw new TypeError(`table ${tableId} has duplicate column id: ${id}`);
+    ids.add(id);
+    if (typeof name !== "string" || name.length === 0) {
+      throw new TypeError(`table ${tableId} column ${id} name must be a non-empty string`);
+    }
+    if (alignment != null && !["left", "center", "right"].includes(alignment)) {
+      throw new TypeError(`table ${tableId} column ${id} alignment must be left, center, or right`);
+    }
+    return { id, name, alignment: alignment || null };
+  });
+}
+
+function initEvalLiveApp(container, data, name, graphScript, evalLivePy, extraModules, precomputedTables) {
   if (typeof container === "string") container = document.getElementById(container);
   container.classList.add("eval-live");
   container.innerHTML = "";
@@ -95,6 +187,33 @@ function initEvalLive(container, data, name, graphScript, evalLivePy, extraModul
   computedContainer.className = "computed-container";
   container.appendChild(computedContainer);
 
+  // Precomputed report tables are presentation-ready data. Their stable ids,
+  // rather than their potentially duplicated display names, own UI state.
+  const precomputedViews = [];
+  if (precomputedTables.length > 0) {
+    const precomputedContainer = document.createElement("div");
+    precomputedContainer.className = "precomputed-container";
+    let previousSection = null;
+    for (const table of precomputedTables) {
+      if (table.section !== previousSection) {
+        previousSection = table.section;
+        if (table.section) {
+          const heading = document.createElement("h2");
+          heading.className = "report-section-heading";
+          heading.textContent = table.section;
+          precomputedContainer.appendChild(heading);
+        }
+      }
+      ensureTableUi(state, table.id, "precomputed");
+      const view = buildTableView(
+        table.name, table.rows, "precomputed", true, table.caption,
+        handlers, table.rows, table.id, table.columns);
+      precomputedViews.push(view);
+      precomputedContainer.appendChild(view.section);
+    }
+    container.appendChild(precomputedContainer);
+  }
+
   let rawHeader = null;
   const rawContainer = document.createElement("div");
   rawContainer.className = "raw-container";
@@ -104,7 +223,7 @@ function initEvalLive(container, data, name, graphScript, evalLivePy, extraModul
   for (const [tableName, rows] of Object.entries(data)) {
     if (!Array.isArray(rows) || rows.length === 0) continue;
     const view = buildTableView(tableName, rows, "raw", true,
-                                TABLE_DESCRIPTIONS[tableName], handlers);
+                                ownValue(TABLE_DESCRIPTIONS, tableName), handlers);
     rawViews.push(view);
   }
   if (rawViews.length > 0) {
@@ -185,6 +304,7 @@ function initEvalLive(container, data, name, graphScript, evalLivePy, extraModul
       rebuildComputedViews();
     }
     for (const v of computedViews) v.sync(state);
+    for (const v of precomputedViews) v.sync(state);
     for (const v of rawViews) v.sync(state);
   }
 
