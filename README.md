@@ -105,6 +105,11 @@ and `text` are own properties, so ordinary objects that happen to contain a
 optional and visual-only. The table filters only change the browser display:
 this API does not recompute the supplied catalog.
 
+Precomputed tables start with numeric highlighting set to `none`, because a
+single report row often mixes unlike units. Viewers can still choose `lowest`
+or `highest` from an individual table's highlight control when that comparison
+is meaningful.
+
 ## Graphs and computed tables
 
 Define graphs and tables in a Python script using the `Registry` API:

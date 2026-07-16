@@ -204,7 +204,10 @@ function initEvalLiveApp(container, data, name, graphScript, evalLivePy, extraMo
           precomputedContainer.appendChild(heading);
         }
       }
-      ensureTableUi(state, table.id, "precomputed");
+      // Precomputed report columns commonly mix units (for example a ratio,
+      // percent change, and file count). Do not imply that their smallest raw
+      // number is inherently best; users can opt into highlighting per table.
+      ensureTableUi(state, table.id, "precomputed").highlight = "none";
       const view = buildTableView(
         table.name, table.rows, "precomputed", true, table.caption,
         handlers, table.rows, table.id, table.columns);

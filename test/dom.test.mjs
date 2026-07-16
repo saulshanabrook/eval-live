@@ -319,8 +319,9 @@ test("precomputed columns separate ids from duplicate labels and formatted value
   assert.equal(bodyRows[0]._children[2].textContent, "120 ms");
   assert.equal(bodyRows[1]._children[2].textContent, "8 ms");
   assert.equal(bodyRows[0]._children[2].style.textAlign, "right");
-  assert.equal(bodyRows[0]._children[3].classList.contains("cell-best"), true);
-  assert.equal(bodyRows[1]._children[2].classList.contains("cell-best"), true);
+  assert.equal(api.getState().ui.tables.timings.highlight, "none");
+  assert.equal(bodyRows[0]._children[3].classList.contains("cell-best"), false);
+  assert.equal(bodyRows[1]._children[2].classList.contains("cell-best"), false);
 
   const durationFilter = section.findAll("filter-input")[1];
   durationFilter.value = "8 ms";
