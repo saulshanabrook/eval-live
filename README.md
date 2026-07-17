@@ -27,7 +27,7 @@ for embedding into a self-contained HTML page:
 import eval_live
 
 eval_live.css()          # CSS stylesheet
-eval_live.js()           # JavaScript library (defines both entry points below)
+eval_live.js()           # JavaScript library (defines the entry points below)
 eval_live.pyodide_lib()  # eval_live.py source for Pyodide runtime
 ```
 
@@ -252,7 +252,7 @@ Pure-JS unit + DOM-smoke tests, no npm/jsdom (they run the browser modules in a
 
 ```bash
 node test/state.test.mjs   # state core: filtering, reducers, SQL-clause helpers
-node test/dom.test.mjs      # both public JS APIs: DOM wiring and AlaSQL filtering
+node test/dom.test.mjs      # all public JS APIs: DOM wiring and AlaSQL filtering
 ```
 
 The Pyodide engine is exercised in the browser, not in these tests.
